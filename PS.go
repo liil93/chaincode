@@ -27,7 +27,7 @@ type CityCode struct {
 	R103 string // Region code 103 (nowongu)
 	R104 string // Region code 104 (gangnamgu)
 	R105 string // Region code 105 (zongrogu)
-}
+} // if string is not good, using map... ex Region[int]string / Region[103] = "key1"...
 
 type UserInfo struct { // User information (KEY: User email)
 	PW string // User Password
@@ -100,13 +100,9 @@ func (t *PS) Invoke(stub shim.ChaincodeStubInterface, function string, args []st
 		return t.HDelete(stub, args)
 	} else if function == "pet_delete" {
 		return t.PDelete(stub, args)
+	} else if function == "trade_insert" {
+		return t.TInsert(stub, args)
 	}
-	// ....adding....
-	// user_change (PW, PN, AP)           ### 0%
-	// home_change (All home info) + CC   ### 0%
-	// pet_change (Size, NS, Vac)         ### 0%
-	// home_delete + CC, AP               ### 70% (Region change...)
-	// pet_delete + PN                    ### 100%
 
 	fmt.Println("[INVOKE] invoke did not find func: " + function)
 	return nil, errors.New("[INVOKE] Received unknown function invocation: " + function)
@@ -125,6 +121,8 @@ func (t *PS) Query(stub shim.ChaincodeStubInterface, function string, args []str
 		return t.PRead(stub, args)
 	} else if function == "city_search" {
 		return t.CSearch(stub, args)
+	} else if function == "trade_search" {
+		return t.TSearch(stub, args)
 	}
 	fmt.Println("[QUERY] query did not find func: " + function) //error
 	return nil, errors.New("[QUERY] Received unknown function query: " + function)
@@ -346,12 +344,43 @@ func (t *PS) HDelete(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 	if userInfo.CC == "0" {
 		return nil, errors.New("[HOME DELETE] Not exist home information")
 	}
+	cityCode := CityCode{}
+	var cstr string
+	var start, end int
+	confCC, _ := stub.GetState(_CCstr)
+	json.Unmarshal(confCC, &cityCode)
+	if userInfo.CC == "R103" {
+		cstr = cityCode.R103
+	} else if userInfo.CC == "R104" {
+		cstr = cityCode.R104
+	} else if userInfo.CC == "R105" {
+		cstr = cityCode.R105
+	}
+	for i, v := range cstr {
+		if v == 47 {
+			end = i
+			if cstr[start+1:end+1] == userID+"/" {
+				cstr = cstr[:start+1] + cstr[end+1:]
+				break
+			}
+			start = end
+		}
+	}
+	if userInfo.CC == "R103" {
+		cityCode.R103 = cstr
+	} else if userInfo.CC == "R104" {
+		cityCode.R104 = cstr
+	} else if userInfo.CC == "R105" {
+		cityCode.R105 = cstr
+	}
 	userInfo.CC = "0"
 	userInfo.AP = "0"
 	homeAsset := HomeAsset{}
 	jsonAsBytesU, _ := json.Marshal(userInfo)
+	jsonAsBytesC, _ := json.Marshal(cityCode)
 	jsonAsBytesH, _ := json.Marshal(homeAsset)
 	stub.PutState(userID, jsonAsBytesU)
+	stub.PutState(_CCstr, jsonAsBytesC)
 	stub.PutState(userID+"#home", jsonAsBytesH)
 	return nil, nil
 }
@@ -380,4 +409,50 @@ func (t *PS) PDelete(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 	stub.PutState(userID, jsonAsBytesU)
 	stub.PutState(userID+"#pet", jsonAsBytesP)
 	return nil, nil
+}
+
+// ============================================================================================================================
+// TInsert - insert transaction information
+// ============================================================================================================================
+func (t *PS) TInsert(stub shim.ChaincodeStubInterface, args []string) ([]byte, error) {
+	if len(args) != 7 {
+		return nil, errors.New("[TRADE INSSERT] Incorrect number of arguments. Expecting 7")
+	}
+	psid := args[0]
+	csid := args[1]
+	ts := args[2]
+	te := args[3]
+	tc := args[4]
+	ta := args[5]
+	th := args[6]
+
+	tradeRec := TradeRec{}
+	tradeRec.PSID = psid
+	tradeRec.CSID = csid
+	tradeRec.TS = ts
+	tradeRec.TE = te
+	tradeRec.TC = tc
+	tradeRec.TA = ta
+	tradeRec.TH = th
+	jsonAsBytes, _ := json.Marshal(tradeRec)
+	stub.PutState(psid+"#"+csid+"#"+tc, jsonAsBytes)
+
+	return nil, nil
+}
+
+// ============================================================================================================================
+// TSearch - search trade information
+// ============================================================================================================================
+func (t *PS) TSearch(stub shim.ChaincodeStubInterface, args []string) ([]byte, error) {
+	if len(args) != 3 {
+		return nil, errors.New("[TRADE SEARCH] Incorrect number of arguments. Expecting 3")
+	}
+	psid := args[0]
+	csid := args[1]
+	tc := args[2]
+	valAsbytes, _ := stub.GetState(psid + "#" + csid + "#" + tc)
+	if valAsbytes == nil {
+		return []byte("[TRADE SEARCH] Not exist transaction"), errors.New("[TRADE SEARCH] Not exist transaction")
+	}
+	return valAsbytes, nil
 }

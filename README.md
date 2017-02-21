@@ -6,17 +6,19 @@ pet_insert 100%
 user_change 0%  
 home_change 0%  
 pet_change 0%  
-home_delete 70% (CityCode구조체에서도 지워지게 하는중...)  
+home_delete 100%  
 pet_delete 100%  
-trade_insert 0%
+trade_insert 100%  
 
 ....Query....  
 user_read 100%  
 home_read 100%  
 pet_read 100%  
 city_search 100%  
-trade_search 0%  
+trade_search 100%  
 
+
+-------------
 ## [membersrvc]
 #### localhost:7050/registrar
 
@@ -331,3 +333,43 @@ trade_search 0%
       },
       "id": 3
     }
+
+
+-------------
+## [invoke] Trade Insert
+#### localhost:7050/chaincode
+    {
+      "jsonrpc": "2.0",
+      "method": "invoke",
+      "params": {
+          "type": 1,
+          "chaincodeID":{
+              "name":"mycc"
+          },
+          "ctorMsg": {
+             "args":["trade_insert", "petsitter", "consumer", "s", "e", "c", "a", "h"]
+          },
+          "secureContext": "admin"
+      },
+      "id": 3
+    }
+
+-------------
+## [query] Trade Search
+#### localhost:7050/chaincode
+    {
+      "jsonrpc": "2.0",
+      "method": "query",
+      "params": {
+          "type": 1,
+          "chaincodeID":{
+              "name":"mycc"
+          },
+          "ctorMsg": {
+             "args":["trade_search", "petsitter", "consumer", "c"]
+          },
+          "secureContext": "admin"
+      },
+      "id": 3
+    }
+-------------
