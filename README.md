@@ -7,7 +7,7 @@ user_change 0%
 실제로 변경할 것은 PW와 AP뿐임  
 args에 "userID", "PW", "AP"로 받는데 변경하지 않을 값은 0으로 입력...  
 home_change 0%  
-사실 집은 변경할 필요없 insert, delete가 있음 (home_change는 안할 생각)  
+사실 집은 변경할 필요없이 insert, delete가 있음 (home_change는 안할 생각)  
 pet_change 0%  
 args에 "userID", "SIZE", "NS", "Vac"으로 하는데 변경하지 않을 값에는 0을 입력...
 home_delete 100%  
