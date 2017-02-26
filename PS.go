@@ -8,6 +8,8 @@ import (
 	"github.com/hyperledger/fabric/core/chaincode/shim"
 )
 
+var _CCstr string
+
 type PS struct { // Petsitting chaincode
 }
 
@@ -20,8 +22,6 @@ type TradeRec struct { // Trade record (KEY: PSID#CSID#Trade complete time)
 	TA   string // Transaction amount
 	TH   string // Transaction history
 }
-
-var _CCstr string
 
 type CityCode struct {
 	R103 string // Region code 103 (nowongu)
@@ -37,6 +37,7 @@ type UserInfo struct { // User information (KEY: User email)
 	// AllHomeAsset []HomeAsset
 	// AllPetAsset []PetAsset
 }
+
 type HomeAsset struct { // Information about home (KEY: User email#home)
 	Address  string // Address about home
 	HomeType string // House type
@@ -45,6 +46,7 @@ type HomeAsset struct { // Information about home (KEY: User email#home)
 	Elevator string // Presence of elevator
 	Parking  string // Parking applicability
 }
+
 type PetAsset struct { // Information about pet (KEY: User email#pet)
 	Name   string // Pet name
 	Birth  string // Pet birth
@@ -102,6 +104,10 @@ func (t *PS) Invoke(stub shim.ChaincodeStubInterface, function string, args []st
 		return t.PDelete(stub, args)
 	} else if function == "trade_insert" {
 		return t.TInsert(stub, args)
+	} else if function == "user_change" {
+		return t.UChange(stub, args)
+	} else if function == "pet_change" {
+		return t.PChange(stub, args)
 	}
 
 	fmt.Println("[INVOKE] invoke did not find func: " + function)
@@ -170,9 +176,6 @@ func (t *PS) HInsert(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 		return nil, errors.New("[HOME INSSERT] Already exist home")
 	}
 	homeAsset := HomeAsset{}
-	cityCode := CityCode{}
-	confCC, _ := stub.GetState(_CCstr)
-	json.Unmarshal(confCC, &cityCode)
 
 	userID := args[0]
 	cc := args[1]
@@ -184,13 +187,6 @@ func (t *PS) HInsert(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 	parking := args[7]
 
 	userInfo.CC = cc
-	if cc == "R103" {
-		cityCode.R103 = cityCode.R103 + userID + "/"
-	} else if cc == "R104" {
-		cityCode.R104 = cityCode.R104 + userID + "/"
-	} else if cc == "R105" {
-		cityCode.R105 = cityCode.R105 + userID + "/"
-	}
 	homeAsset.Address = address
 	homeAsset.HomeType = hometype
 	homeAsset.Room = room
@@ -199,10 +195,8 @@ func (t *PS) HInsert(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 	homeAsset.Parking = parking
 
 	jsonAsBytesU, _ := json.Marshal(userInfo)
-	jsonAsBytesC, _ := json.Marshal(cityCode)
 	jsonAsBytesH, _ := json.Marshal(homeAsset)
 	stub.PutState(userID, jsonAsBytesU)
-	stub.PutState(_CCstr, jsonAsBytesC)
 	stub.PutState(userID+"#home", jsonAsBytesH)
 	return nil, nil
 }
@@ -455,4 +449,109 @@ func (t *PS) TSearch(stub shim.ChaincodeStubInterface, args []string) ([]byte, e
 		return []byte("[TRADE SEARCH] Not exist transaction"), errors.New("[TRADE SEARCH] Not exist transaction")
 	}
 	return valAsbytes, nil
+}
+
+// ============================================================================================================================
+// UChange - change user information (PW, AP)
+// ============================================================================================================================
+func (t *PS) UChange(stub shim.ChaincodeStubInterface, args []string) ([]byte, error) {
+	if len(args) != 3 {
+		return nil, errors.New("[USER CHANGE] Incorrect number of arguments. Expecting 3")
+	}
+	confUser, _ := stub.GetState(args[0])
+	if confUser == nil {
+		return nil, errors.New("[USER CHANGE] Not exist userID")
+	}
+	userInfo := UserInfo{}
+	json.Unmarshal(confUser, &userInfo)
+	if userInfo.CC == "0" && args[2] == "1" {
+		return nil, errors.New("[USER CHANGE] Can't change AP to 1...(not exist home)")
+	}
+	var pw, ap string
+	userID := args[0]
+	if args[1] != "0" {
+		pw = args[1]
+		userInfo.PW = pw
+	}
+	ap = args[2]
+
+	cc := userInfo.CC
+	var cstr string
+	var start, end int
+	cityCode := CityCode{}
+	confCC, _ := stub.GetState(_CCstr)
+	json.Unmarshal(confCC, &cityCode)
+	if ap == "1" && cc != "0" && userInfo.AP == "0" {
+		if cc == "R103" {
+			cityCode.R103 = cityCode.R103 + userID + "/"
+		} else if cc == "R104" {
+			cityCode.R104 = cityCode.R104 + userID + "/"
+		} else if cc == "R105" {
+			cityCode.R105 = cityCode.R105 + userID + "/"
+		}
+		jsonAsBytesC, _ := json.Marshal(cityCode)
+		stub.PutState(_CCstr, jsonAsBytesC)
+	} else if ap == "0" && cc != "0" && userInfo.AP == "1" {
+		for i, v := range cstr {
+			if v == 47 {
+				end = i
+				if cstr[start+1:end+1] == userID+"/" {
+					cstr = cstr[:start+1] + cstr[end+1:]
+					break
+				}
+				start = end
+			}
+		}
+		if userInfo.CC == "R103" {
+			cityCode.R103 = cstr
+		} else if userInfo.CC == "R104" {
+			cityCode.R104 = cstr
+		} else if userInfo.CC == "R105" {
+			cityCode.R105 = cstr
+		}
+		jsonAsBytesC, _ := json.Marshal(cityCode)
+		stub.PutState(_CCstr, jsonAsBytesC)
+	}
+	userInfo.AP = ap
+	jsonAsBytesU, _ := json.Marshal(userInfo)
+	stub.PutState(userID, jsonAsBytesU)
+	return nil, nil
+}
+
+// ============================================================================================================================
+// PChange - change pet information (SIZE, NS, Vac)
+// ============================================================================================================================
+func (t *PS) PChange(stub shim.ChaincodeStubInterface, args []string) ([]byte, error) {
+	if len(args) != 4 {
+		return nil, errors.New("[PET CHANGE] Incorrect number of arguments. Expecting 4")
+	}
+	confUser, _ := stub.GetState(args[0])
+	if confUser == nil {
+		return nil, errors.New("[PET CHANGE] Not exist userID")
+	}
+	userInfo := UserInfo{}
+	json.Unmarshal(confUser, &userInfo)
+	if userInfo.PN != "1" {
+		return nil, errors.New("[PET CHANGE] Not exist pet")
+	}
+	valAsbytes, _ := stub.GetState(args[0] + "#pet")
+	petAsset := PetAsset{}
+	json.Unmarshal(valAsbytes, &petAsset)
+	var size, ns, vac string
+	userID := args[0]
+	if args[1] != "0" {
+		size = args[1]
+		petAsset.Size = size
+	}
+	if args[2] != "0" {
+		ns = args[2]
+		petAsset.NS = ns
+	}
+	if args[3] != "0" {
+		vac = args[3]
+		petAsset.Vac = vac
+	}
+	jsonAsBytesP, _ := json.Marshal(petAsset)
+	stub.PutState(userID+"#pet", jsonAsBytesP)
+	return nil, nil
 }
